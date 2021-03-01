@@ -29,7 +29,7 @@
 #else
 	#include <circle/pwmsoundbasedevice.h>
 	#define SOUND_CLASS	CPWMSoundBaseDevice
-	#define SAMPLE_RATE	48000
+	#define SAMPLE_RATE     781250
 #endif
 
 #include <circle/interrupt.h>
@@ -79,7 +79,12 @@ private:
 	unsigned m_nSampleCount;
 	unsigned m_nFrequency;		// 0 if no key pressed
 	unsigned m_nPrevFrequency;
-
+        float interpolationStep;
+        unsigned lastSampleLastChunk;
+        unsigned NOISE_RANGE;
+        float stepsPerInterpolation;
+        float stepRatio;
+  
 	u8 m_ucKeyNumber;
 
 	static const float s_KeyFrequency[];

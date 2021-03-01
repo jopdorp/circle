@@ -21,6 +21,7 @@
 #include <circle/devicenameservice.h>
 #include <circle/logger.h>
 #include <assert.h>
+#include <stdlib.h>
 
 #define VOLUME_PERCENT	20
 
@@ -28,6 +29,7 @@
 #define MIDI_NOTE_ON	0b1001
 
 #define KEY_NONE	255
+#define MASK            0b11111110000000000000000000000000
 
 static const char FromMiniOrgan[] = "organ";
 
@@ -86,6 +88,10 @@ CMiniOrgan::CMiniOrgan (CInterruptSystem *pInterrupt)
 	m_nHighLevel    = GetRangeMax () * VOLUME_PERCENT / 100;
 	m_nNullLevel    = (m_nHighLevel + m_nLowLevel) / 2;
 	m_nCurrentLevel = m_nNullLevel;
+	interpolationStep = 0;
+	lastSampleLastChunk = 0;
+	NOISE_RANGE = 1 << (32-7);
+	stepsPerInterpolation = SAMPLE_RATE / 48000;
 }
 
 CMiniOrgan::~CMiniOrgan (void)
@@ -217,11 +223,19 @@ unsigned CMiniOrgan::GetChunk (u32 *pBuffer, unsigned nChunkSize)
 	unsigned nSampleDelay = 0;
 	if (m_nFrequency != 0)
 	{
-		nSampleDelay = (SAMPLE_RATE/2 + m_nFrequency/2) / m_nFrequency;
+	  nSampleDelay = (SAMPLE_RATE/2 + m_nFrequency/2) / m_nFrequency * SAMPLE_RATE/48000;
 	}
 
+	
+	int lastSample = lastSampleLastChunk;
+	
 	for (; nChunkSize > 0; nChunkSize -= 2)		// fill the whole buffer
 	{
+	  if(interpolationStep < stepsPerInterpolation){
+	    interpolationStep += 1;
+	  }else{
+	    interpolationStep = 0;
+	  }
 		if (m_nFrequency != 0)			// key pressed?
 		{
 			// change output level if required to generate a square wave
@@ -238,9 +252,11 @@ unsigned CMiniOrgan::GetChunk (u32 *pBuffer, unsigned nChunkSize)
 					m_nCurrentLevel = m_nLowLevel;
 				}
 			}
-
-			*pBuffer++ = (u32) m_nCurrentLevel;		// 2 stereo channels
-			*pBuffer++ = (u32) m_nCurrentLevel;
+			int gaussianSample = (rand() % NOISE_RANGE) + (rand() % NOISE_RANGE);
+			int noise = gaussianSample + (float(m_nCurrentLevel - lastSample) * (interpolationStep / stepsPerInterpolation) );
+			*pBuffer++ = (u32) ((m_nCurrentLevel & MASK) + noise) & MASK;		// 2 stereo channels
+			*pBuffer++ = (u32) ((m_nCurrentLevel & MASK) + noise) & MASK;
+			lastSample = m_nCurrentLevel;
 		}
 		else
 		{
@@ -248,6 +264,7 @@ unsigned CMiniOrgan::GetChunk (u32 *pBuffer, unsigned nChunkSize)
 			*pBuffer++ = (u32) m_nNullLevel;
 		}
 	}
+	lastSampleLastChunk = lastSample;
 
 	return nResult;
 }
